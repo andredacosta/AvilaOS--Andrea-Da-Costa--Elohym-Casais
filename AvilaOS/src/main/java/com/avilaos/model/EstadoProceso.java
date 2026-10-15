@@ -2,7 +2,7 @@
 package com.avilaos.model;
 
 
-public enum EstadosProcesos {
+public enum EstadoProceso {
     NUEVO,
     LISTO,
     EJECUCION,

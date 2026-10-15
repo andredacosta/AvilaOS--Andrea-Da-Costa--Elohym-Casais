@@ -1,4 +1,6 @@
-com\avilaos\model\EstadosProcesos.class
-com\avilaos\model\Tipoproceso.class
+com\avilaos\model\PCB.class
+com\avilaos\model\TipoProceso.class
 com\avilaos\model\ModoCPU.class
+com\avilaos\model\Proceso.class
+com\avilaos\model\EstadoProceso.class
 com\avilaos\model\PolititcaPlanificacion.class
