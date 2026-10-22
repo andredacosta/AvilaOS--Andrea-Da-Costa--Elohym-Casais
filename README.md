@@ -14,9 +14,9 @@ El objetivo del simulador es modelar los conceptos fundamentales de **procesos, 
 * **Arquitectura Distribuida Multi-Nodo:** Cada computador del clúster posee sus propios componentes (CPU, memoria RAM, núcleo del SO, colas y planificador independiente).
 * **Sincronización mediante Semáforos:** Implementación de semáforos orientados al sistema operativo (`mutex`, `lleno`, `vacio`) para proteger los buffers acotados en memoria.
 * **Comunicación Transparente y Latencia de Red:** Soporte para accesos locales y remotos a buffers con penalización por latencia de red configurable en ciclos.
-* **Políticas de Planificación Dinámicas:** Intercambio en tiempo de ejecución de algoritmos como FCFS, Round Robin, EDF (Earliest Deadline First) y Prioridades Apropiativas.
+* **Políticas de Planificación Dinámicas:** Intercambio en tiempo de ejecución de algoritmos como FCFS, Round Robin, EDF y Prioridades Apropiativas.
 * **Persistencia de Datos:** Carga y guardado de configuraciones iniciales del clúster a través de archivos **JSON / CSV**.
-* **Estructuras Primitivas:** Desarrollo de estructuras de datos customizadas desde cero (sin el uso de `java.util` Collection Framework).
+* **Estructuras Primitivas:** Desarrollo de estructuras de datos customizadas desde cero.
 
 ---
 
