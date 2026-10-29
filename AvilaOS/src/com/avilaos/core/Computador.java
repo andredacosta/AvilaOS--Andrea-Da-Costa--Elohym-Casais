@@ -19,6 +19,7 @@ public class Computador implements ComponenteReloj {
     private final Cola<Proceso> colaNuevos;
     private final Cola<Proceso> colaListos;
     private final Cola<Proceso> colaBloqueados;
+    private final Cola<Proceso> colaTerminados;
 
     private PoliticaScheduler planificador;
     private ControlProductorConsumidor controlBuffer;
@@ -43,6 +44,7 @@ public class Computador implements ComponenteReloj {
         this.colaNuevos = new Cola<>();
         this.colaListos = new Cola<>();
         this.colaBloqueados = new Cola<>();
+        this.colaTerminados = new Cola<>();
 
         this.planificador = planificador;
         this.controlBuffer = null;
@@ -81,7 +83,7 @@ public class Computador implements ComponenteReloj {
 
         if (proceso.getPcb().getComputadorId() != id) {
             throw new IllegalArgumentException(
-                    "El proceso pertenece a otro computador");
+                    "Proceso de otro computador");
         }
 
         if (proceso.getPcb().getEstado()
@@ -93,6 +95,10 @@ public class Computador implements ComponenteReloj {
         colaNuevos.encolar(proceso);
     }
 
+    // =========================================
+    // ADMISION DE PROCESOS
+    // =========================================
+
     private void admitirProcesos() {
 
         int cantidad = colaNuevos.getTamanio();
@@ -102,10 +108,12 @@ public class Computador implements ComponenteReloj {
             Proceso proceso = colaNuevos.desencolar();
 
             if (proceso.estaTerminado()) {
+                registrarTerminado(proceso, false);
                 continue;
             }
 
-            if (memoria.asignarMemoria(proceso.getPcb())) {
+            if (memoria.asignarMemoria(
+                    proceso.getPcb())) {
 
                 proceso.getPcb().setEstado(
                         EstadoProceso.LISTO);
@@ -119,9 +127,14 @@ public class Computador implements ComponenteReloj {
         }
     }
 
+    // =========================================
+    // DESPACHO Y PLANIFICACION
+    // =========================================
+
     private void despachar() {
 
-        if (!cpu.estaLibre() || colaListos.estaVacia()) {
+        if (!cpu.estaLibre()
+                || colaListos.estaVacia()) {
             return;
         }
 
@@ -134,16 +147,77 @@ public class Computador implements ComponenteReloj {
         }
     }
 
+    private void evaluarDesalojo() {
+
+        Proceso actual = cpu.getProcesoActual();
+
+        if (actual == null) {
+            return;
+        }
+
+        if (planificador.debeDesalojar(
+                actual,
+                colaListos,
+                ciclosQuantum)) {
+
+            Proceso desalojado =
+                    cpu.desalojarProceso();
+
+            if (desalojado != null) {
+                colaListos.encolar(desalojado);
+            }
+
+            ciclosQuantum = 0;
+        }
+    }
+
+    // =========================================
+    // CANCELACION SEGURA
+    // =========================================
+
+    private void registrarTerminado(
+            Proceso proceso,
+            boolean teniaMemoria) {
+
+        if (proceso == null) {
+            return;
+        }
+
+        if (controlBuffer != null
+                && proceso.esProductorConsumidor()) {
+
+            controlBuffer.cancelarOperacion(proceso);
+        }
+
+        if (teniaMemoria) {
+            memoria.liberarMemoria(
+                    proceso.getPcb());
+        }
+
+        colaTerminados.encolar(proceso);
+    }
+
+    private void vencerProceso(Proceso proceso) {
+
+        if (proceso == null
+                || proceso.estaTerminado()) {
+            return;
+        }
+
+        proceso.vencerDeadline();
+    }
+
     private void disminuirDeadline(Proceso proceso) {
 
-        if (proceso.estaTerminado()) {
+        if (proceso == null
+                || proceso.estaTerminado()) {
             return;
         }
 
         proceso.getPcb().disminuirDeadline();
 
-        if (proceso.getPcb().getDeadline() == 0) {
-            proceso.vencerDeadline();
+        if (proceso.getPcb().getDeadline() <= 0) {
+            vencerProceso(proceso);
         }
     }
 
@@ -161,10 +235,9 @@ public class Computador implements ComponenteReloj {
 
             if (proceso.estaTerminado()) {
 
-                if (tieneMemoria) {
-                    memoria.liberarMemoria(
-                            proceso.getPcb());
-                }
+                registrarTerminado(
+                        proceso,
+                        tieneMemoria);
 
             } else {
 
@@ -172,6 +245,10 @@ public class Computador implements ComponenteReloj {
             }
         }
     }
+
+    // =========================================
+    // DESPERTAR POR SEMAFORO
+    // =========================================
 
     private boolean tienePermisoParaDespertar(
             Proceso proceso) {
@@ -189,18 +266,28 @@ public class Computador implements ComponenteReloj {
         SemaforoSimulado semaforo = null;
 
         if (motivo == MotivoBloqueo.BUFFER_LLENO) {
+
             semaforo = buffer.getVacios();
 
-        } else if (motivo == MotivoBloqueo.BUFFER_VACIO) {
+        } else if (motivo
+                == MotivoBloqueo.BUFFER_VACIO) {
+
             semaforo = buffer.getLlenos();
 
-        } else if (motivo == MotivoBloqueo.MUTEX_OCUPADO) {
+        } else if (motivo
+                == MotivoBloqueo.MUTEX_OCUPADO) {
+
             semaforo = buffer.getMutex();
         }
 
         return semaforo != null
-                && semaforo.tienePermisoTransferido(proceso);
+                && semaforo.tienePermisoTransferido(
+                        proceso);
     }
+
+    // =========================================
+    // PROCESOS BLOQUEADOS
+    // =========================================
 
     private void avanzarBloqueados() {
 
@@ -213,8 +300,7 @@ public class Computador implements ComponenteReloj {
 
             if (proceso.estaTerminado()) {
 
-                memoria.liberarMemoria(
-                        proceso.getPcb());
+                registrarTerminado(proceso, true);
                 continue;
             }
 
@@ -223,21 +309,26 @@ public class Computador implements ComponenteReloj {
 
             boolean despertar = false;
 
-            if (motivo == MotivoBloqueo.ENTRADA_SALIDA) {
+            if (motivo
+                    == MotivoBloqueo.ENTRADA_SALIDA) {
 
                 proceso.avanzarIO();
                 despertar = proceso.ioFinalizada();
 
-            } else if (motivo == MotivoBloqueo.LATENCIA_RED) {
+            } else if (motivo
+                    == MotivoBloqueo.LATENCIA_RED) {
 
                 proceso.getPcb().avanzarLatencia();
 
-                despertar =
-                        proceso.getPcb().latenciaFinalizada();
+                despertar = proceso.getPcb()
+                        .latenciaFinalizada();
 
-            } else if (motivo == MotivoBloqueo.BUFFER_LLENO
-                    || motivo == MotivoBloqueo.BUFFER_VACIO
-                    || motivo == MotivoBloqueo.MUTEX_OCUPADO) {
+            } else if (motivo
+                    == MotivoBloqueo.BUFFER_LLENO
+                    || motivo
+                    == MotivoBloqueo.BUFFER_VACIO
+                    || motivo
+                    == MotivoBloqueo.MUTEX_OCUPADO) {
 
                 despertar =
                         tienePermisoParaDespertar(proceso);
@@ -255,7 +346,12 @@ public class Computador implements ComponenteReloj {
         }
     }
 
-    private boolean accesoRemoto(Proceso proceso) {
+    // =========================================
+    // ACCESO LOCAL Y REMOTO
+    // =========================================
+
+    private boolean accesoRemoto(
+            Proceso proceso) {
 
         if (controlBuffer == null) {
             return false;
@@ -274,69 +370,61 @@ public class Computador implements ComponenteReloj {
                     "Buffer no configurado");
         }
 
-        // La latencia remota ocurre una vez
-        // antes de cada operacion completa.
         if (accesoRemoto(proceso)
                 && latenciaRed > 0
                 && !proceso.getPcb()
                         .isLatenciaAplicadaOperacion()) {
 
-            proceso.getPcb().iniciarLatencia(latenciaRed);
+            proceso.getPcb().iniciarLatencia(
+                    latenciaRed);
+
             return;
         }
 
         FaseOperacionBuffer faseAnterior =
-                proceso.getPcb().getFaseOperacionBuffer();
+                proceso.getPcb()
+                        .getFaseOperacionBuffer();
 
-        // Procesar exactamente una fase.
         controlBuffer.ejecutarOperacion(proceso);
 
-        // Si termino la fase final, se completa
-        // una operacion logica del proceso.
-        if (faseAnterior == FaseOperacionBuffer.NOTIFICANDO_BUFFER
+        // Una operacion logica completa termina
+        // despues del ultimo semSignal.
+        if (faseAnterior
+                == FaseOperacionBuffer.NOTIFICANDO_BUFFER
                 && proceso.getPcb().getEstado()
-                        == EstadoProceso.EJECUCION) {
+                == EstadoProceso.EJECUCION) {
 
             proceso.completarOperacionBuffer();
         }
     }
 
+    // =========================================
+    // CICLO DEL COMPUTADOR
+    // =========================================
+
     @Override
     public void ejecutarCiclo() {
 
-        // 1. Avanzar procesos bloqueados.
+        // 1. Actualizar procesos bloqueados.
         avanzarBloqueados();
 
         // 2. Admitir procesos nuevos.
         admitirProcesos();
 
         // 3. Evaluar desalojo.
-        Proceso actual = cpu.getProcesoActual();
+        evaluarDesalojo();
 
-        if (actual != null
-                && planificador.debeDesalojar(
-                        actual, colaListos, ciclosQuantum)) {
-
-            Proceso desalojado =
-                    cpu.desalojarProceso();
-
-            if (desalojado != null) {
-                colaListos.encolar(desalojado);
-            }
-
-            ciclosQuantum = 0;
-        }
-
-        // 4. Despachar.
+        // 4. Despachar siguiente proceso.
         despachar();
 
-        actual = cpu.getProcesoActual();
+        Proceso actual = cpu.getProcesoActual();
 
-        // 5. Ejecutar CPU o fase de sistema.
+        // 5. Ejecutar CPU.
         if (actual != null
                 && actual.esProductorConsumidor()) {
 
             cpu.ejecutarCicloSistema();
+
             prepararOperacionBuffer(actual);
 
         } else {
@@ -344,24 +432,22 @@ public class Computador implements ComponenteReloj {
             cpu.ejecutarCiclo();
         }
 
-        // 6. Actualizar el estado del proceso.
+        // 6. Procesar resultado de ejecucion.
         if (actual != null) {
 
             if (actual.estaTerminado()) {
 
                 cpu.liberarCPU();
 
-                memoria.liberarMemoria(
-                        actual.getPcb());
-
+                registrarTerminado(actual, true);
                 ciclosQuantum = 0;
 
             } else if (actual.getPcb().getEstado()
                     == EstadoProceso.BLOQUEADO) {
 
                 cpu.liberarCPU();
-
                 colaBloqueados.encolar(actual);
+
                 ciclosQuantum = 0;
 
             } else {
@@ -370,29 +456,40 @@ public class Computador implements ComponenteReloj {
             }
         }
 
-        // 7. Deadlines de procesos en espera.
-        actualizarDeadlineCola(colaNuevos, false);
-        actualizarDeadlineCola(colaListos, true);
-        actualizarDeadlineCola(colaBloqueados, true);
+        // 7. Actualizar deadlines de las colas.
+        actualizarDeadlineCola(
+                colaNuevos, false);
 
-        // 8. Deadline del proceso en CPU.
-        Proceso ejecutando = cpu.getProcesoActual();
+        actualizarDeadlineCola(
+                colaListos, true);
+
+        actualizarDeadlineCola(
+                colaBloqueados, true);
+
+        // 8. Actualizar deadline del proceso
+        // que permanece ejecutando.
+        Proceso ejecutando =
+                cpu.getProcesoActual();
 
         if (ejecutando != null) {
 
             disminuirDeadline(ejecutando);
 
-            if (ejecutando.vencioPorDeadline()) {
+            if (ejecutando.estaTerminado()) {
 
                 cpu.liberarCPU();
 
-                memoria.liberarMemoria(
-                        ejecutando.getPcb());
+                registrarTerminado(
+                        ejecutando, true);
 
                 ciclosQuantum = 0;
             }
         }
     }
+
+    // =========================================
+    // CONFIGURACION
+    // =========================================
 
     public void cambiarPlanificador(
             PoliticaScheduler nuevoPlanificador) {
@@ -405,6 +502,10 @@ public class Computador implements ComponenteReloj {
         this.planificador = nuevoPlanificador;
         ciclosQuantum = 0;
     }
+
+    // =========================================
+    // GETTERS
+    // =========================================
 
     public int getId() {
         return id;
@@ -432,5 +533,9 @@ public class Computador implements ComponenteReloj {
 
     public int getProcesosBloqueados() {
         return colaBloqueados.getTamanio();
+    }
+
+    public int getProcesosTerminados() {
+        return colaTerminados.getTamanio();
     }
 }
