@@ -2,8 +2,6 @@
 
 **ÁvilaOS** es un simulador de un sistema operativo distribuido orientado a objetos, desarrollado en **Java (v21+)** para coordinar un clúster de múltiples computadores mediante un **reloj global unificado**. 
 
-El proyecto fue diseñado como parte de la asignatura *Sistemas Operativos (Trimestre 2627-1)* en la **Universidad Metropolitana**.
-
 ---
 
 ##  Descripción General
@@ -30,5 +28,5 @@ https://docs.google.com/document/d/1rhcq-VXYpPzAyjxVOTDsRsyq_9jvBxi9nlqJjp4SON4/
 
 ## Equipo de Desarrollo
 
-* **Persona 1:** [Andrea Da Costa]
-* **Persona 2:** [Elohym Casais]
+* **Persona 1:** Andrea Da Costa.
+* **Persona 2:** Elohym Casais
