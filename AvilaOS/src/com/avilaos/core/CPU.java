@@ -34,21 +34,27 @@ public class CPU {
     }
 
     public void asignarProceso(Proceso proceso) {
+
         if (proceso == null) {
             throw new IllegalArgumentException(
-                "El proceso no puede ser nulo");
+                    "El proceso no puede ser nulo");
         }
 
         if (!estaLibre()) {
             throw new IllegalStateException(
-                "La CPU ya tiene un proceso asignado");
+                    "La CPU ya tiene un proceso asignado");
         }
 
         PCB pcb = proceso.getPcb();
 
         if (pcb.getEstado() != EstadoProceso.LISTO) {
             throw new IllegalStateException(
-                "El proceso debe estar LISTO");
+                    "El proceso debe estar LISTO");
+        }
+
+        if (pcb.getDeadline() <= 0) {
+            throw new IllegalStateException(
+                    "No se puede ejecutar un proceso vencido");
         }
 
         procesoActual = proceso;
@@ -57,6 +63,7 @@ public class CPU {
     }
 
     public void ejecutarCiclo() {
+
         ciclosEjecutados++;
 
         if (procesoActual == null) {
@@ -66,25 +73,33 @@ public class CPU {
 
         PCB pcb = procesoActual.getPcb();
 
-        if (pcb.getEstado() != EstadoProceso.EJECUCION
-                || pcb.getDeadline() <= 0) {
-            if (pcb.getDeadline() <= 0) {
-                procesoActual.finalizar();
-            }
+        // Verificar si el deadline ya vencio
+        if (pcb.getDeadline() <= 0) {
+            procesoActual.vencerDeadline();
             liberarCPU();
             return;
         }
 
+        // Verificar que el proceso pueda ejecutarse
+        if (pcb.getEstado() != EstadoProceso.EJECUCION) {
+            liberarCPU();
+            return;
+        }
+
+        // Ejecutar una instruccion
         modo = ModoCPU.USUARIO;
         ciclosOcupados++;
+
         procesoActual.ejecutarCiclo();
 
+        // Liberar la CPU si el proceso finalizo
         if (procesoActual.estaTerminado()) {
             liberarCPU();
         }
     }
 
     public Proceso desalojarProceso() {
+
         if (procesoActual == null) {
             return null;
         }
@@ -93,7 +108,7 @@ public class CPU {
 
         if (!desalojado.estaTerminado()) {
             desalojado.getPcb().setEstado(
-                EstadoProceso.LISTO);
+                    EstadoProceso.LISTO);
         }
 
         liberarCPU();
@@ -114,6 +129,7 @@ public class CPU {
     }
 
     public double getUtilizacion() {
+
         if (ciclosEjecutados == 0) {
             return 0;
         }
