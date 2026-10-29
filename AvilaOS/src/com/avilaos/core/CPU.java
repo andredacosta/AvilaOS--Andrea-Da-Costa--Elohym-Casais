@@ -13,12 +13,14 @@ public class CPU {
 
     private int ciclosEjecutados;
     private int ciclosOcupados;
+    private int ciclosSistema;
 
     public CPU() {
         this.procesoActual = null;
         this.modo = ModoCPU.SISTEMA_OPERATIVO;
         this.ciclosEjecutados = 0;
         this.ciclosOcupados = 0;
+        this.ciclosSistema = 0;
     }
 
     public Proceso getProcesoActual() {
@@ -62,6 +64,7 @@ public class CPU {
         modo = ModoCPU.USUARIO;
     }
 
+    // Ejecuta una instruccion normal de usuario.
     public void ejecutarCiclo() {
 
         ciclosEjecutados++;
@@ -73,29 +76,42 @@ public class CPU {
 
         PCB pcb = procesoActual.getPcb();
 
-        // Verificar si el deadline ya vencio
         if (pcb.getDeadline() <= 0) {
             procesoActual.vencerDeadline();
             liberarCPU();
             return;
         }
 
-        // Verificar que el proceso pueda ejecutarse
         if (pcb.getEstado() != EstadoProceso.EJECUCION) {
             liberarCPU();
             return;
         }
 
-        // Ejecutar una instruccion
         modo = ModoCPU.USUARIO;
         ciclosOcupados++;
 
         procesoActual.ejecutarCiclo();
 
-        // Liberar la CPU si el proceso finalizo
         if (procesoActual.estaTerminado()) {
             liberarCPU();
         }
+    }
+
+    // Registra un ciclo dedicado a una operacion del SO.
+    // No ejecuta automaticamente una instruccion
+    // normal del proceso.
+    public void ejecutarCicloSistema() {
+
+        ciclosEjecutados++;
+
+        if (procesoActual == null) {
+            modo = ModoCPU.SISTEMA_OPERATIVO;
+            return;
+        }
+
+        modo = ModoCPU.SISTEMA_OPERATIVO;
+        ciclosOcupados++;
+        ciclosSistema++;
     }
 
     public Proceso desalojarProceso() {
@@ -112,6 +128,7 @@ public class CPU {
         }
 
         liberarCPU();
+
         return desalojado;
     }
 
@@ -126,6 +143,10 @@ public class CPU {
 
     public int getCiclosOcupados() {
         return ciclosOcupados;
+    }
+
+    public int getCiclosSistema() {
+        return ciclosSistema;
     }
 
     public double getUtilizacion() {

@@ -20,16 +20,19 @@ public class PCB {
 
     private boolean vencidoPorDeadline;
 
-    // Configuracion provisional de E/S
+    // Configuracion de entrada/salida
     private static final int INTERVALO_IO = 2;
     private static final int DURACION_IO = 3;
 
     private int ciclosIORestantes;
     private MotivoBloqueo motivoBloqueo;
 
-    // Control de latencia de red simulada
+    // Latencia de red simulada
     private int ciclosLatenciaRestantes;
     private boolean latenciaAplicadaOperacion;
+
+    // Fase actual del productor-consumidor
+    private FaseOperacionBuffer faseOperacionBuffer;
 
     public PCB(int id, String nombre, int computadorId,
                TipoProceso tipo, int prioridad,
@@ -37,7 +40,8 @@ public class PCB {
                int totalInstrucciones) {
 
         if (id <= 0 || computadorId <= 0) {
-            throw new IllegalArgumentException("ID invalido");
+            throw new IllegalArgumentException(
+                    "ID invalido");
         }
 
         if (nombre == null || nombre.isBlank() || tipo == null) {
@@ -66,14 +70,20 @@ public class PCB {
         this.mar = 0;
 
         this.vencidoPorDeadline = false;
+
         this.ciclosIORestantes = 0;
         this.motivoBloqueo = MotivoBloqueo.NINGUNO;
 
         this.ciclosLatenciaRestantes = 0;
         this.latenciaAplicadaOperacion = false;
+
+        this.faseOperacionBuffer =
+                FaseOperacionBuffer.ESPERANDO_PERMISO;
     }
 
+    // ==========================================
     // GETTERS
+    // ==========================================
 
     public int getId() {
         return id;
@@ -100,6 +110,7 @@ public class PCB {
             throw new IllegalArgumentException(
                     "Estado invalido");
         }
+
         this.estado = estado;
     }
 
@@ -147,7 +158,13 @@ public class PCB {
         return latenciaAplicadaOperacion;
     }
 
-    // EJECUCION
+    public FaseOperacionBuffer getFaseOperacionBuffer() {
+        return faseOperacionBuffer;
+    }
+
+    // ==========================================
+    // EJECUCION DE INSTRUCCIONES
+    // ==========================================
 
     public void avanzarInstruccion() {
 
@@ -160,12 +177,15 @@ public class PCB {
         }
     }
 
+    // ==========================================
     // DEADLINES
+    // ==========================================
 
     public void disminuirDeadline() {
 
         if (deadline > 0
                 && estado != EstadoProceso.TERMINADO) {
+
             deadline--;
         }
     }
@@ -184,20 +204,25 @@ public class PCB {
         latenciaAplicadaOperacion = false;
 
         motivoBloqueo = MotivoBloqueo.NINGUNO;
+
         estado = EstadoProceso.TERMINADO;
     }
 
+    // ==========================================
     // BLOQUEO Y DESBLOQUEO
+    // ==========================================
 
     public void bloquear(MotivoBloqueo motivo) {
 
         if (motivo == null
                 || motivo == MotivoBloqueo.NINGUNO) {
+
             throw new IllegalArgumentException(
                     "Motivo de bloqueo invalido");
         }
 
         if (estado != EstadoProceso.EJECUCION) {
+
             throw new IllegalStateException(
                     "Solo un proceso en ejecucion puede bloquearse");
         }
@@ -209,6 +234,7 @@ public class PCB {
     public void desbloquear() {
 
         if (estado != EstadoProceso.BLOQUEADO) {
+
             throw new IllegalStateException(
                     "El proceso no esta bloqueado");
         }
@@ -217,7 +243,9 @@ public class PCB {
         estado = EstadoProceso.LISTO;
     }
 
+    // ==========================================
     // ENTRADA Y SALIDA
+    // ==========================================
 
     public boolean debeSolicitarIO() {
 
@@ -261,7 +289,9 @@ public class PCB {
                 && ciclosIORestantes == 0;
     }
 
-    // LATENCIA DE RED EN CICLOS SIMULADOS
+    // ==========================================
+    // LATENCIA DE RED
+    // ==========================================
 
     public void iniciarLatencia(int ciclos) {
 
@@ -313,8 +343,6 @@ public class PCB {
                 && ciclosLatenciaRestantes == 0;
     }
 
-    // Se llama cuando una operacion sobre el buffer
-    // se completa correctamente.
     public void completarOperacionBuffer() {
 
         if (tipo != TipoProceso.PRODUCTOR
@@ -325,5 +353,26 @@ public class PCB {
 
         latenciaAplicadaOperacion = false;
         ciclosLatenciaRestantes = 0;
+    }
+
+    // ==========================================
+    // FASES PRODUCTOR-CONSUMIDOR
+    // ==========================================
+
+    public void setFaseOperacionBuffer(
+            FaseOperacionBuffer fase) {
+
+        if (fase == null) {
+            throw new IllegalArgumentException(
+                    "Fase invalida");
+        }
+
+        this.faseOperacionBuffer = fase;
+    }
+
+    public void reiniciarFaseOperacionBuffer() {
+
+        this.faseOperacionBuffer =
+                FaseOperacionBuffer.ESPERANDO_PERMISO;
     }
 }

@@ -11,6 +11,11 @@ public class BufferSimulado {
     private int salida;
     private int cantidad;
 
+    // Semaforos simulados del buffer acotado
+    private final SemaforoSimulado mutex;
+    private final SemaforoSimulado llenos;
+    private final SemaforoSimulado vacios;
+
     public BufferSimulado(
             String idBuffer,
             int capacidad,
@@ -33,8 +38,20 @@ public class BufferSimulado {
         this.entrada = 0;
         this.salida = 0;
         this.cantidad = 0;
+
+        this.mutex = new SemaforoSimulado(
+                "mutex_" + idBuffer, 1);
+
+        this.llenos = new SemaforoSimulado(
+                "llenos_" + idBuffer, 0);
+
+        this.vacios = new SemaforoSimulado(
+                "vacios_" + idBuffer, capacidad);
     }
 
+    // Operacion basica de produccion.
+    // Por ahora se mantiene para compatibilidad
+    // con las pruebas anteriores.
     public synchronized boolean intentarProducir(
             Object elemento) {
 
@@ -54,6 +71,7 @@ public class BufferSimulado {
         return true;
     }
 
+    // Operacion basica de consumo.
     public synchronized ResultadoConsumo intentarConsumir() {
 
         if (estaVacio()) {
@@ -91,6 +109,18 @@ public class BufferSimulado {
 
     public int getComputadorAnfitrionId() {
         return computadorAnfitrionId;
+    }
+
+    public SemaforoSimulado getMutex() {
+        return mutex;
+    }
+
+    public SemaforoSimulado getLlenos() {
+        return llenos;
+    }
+
+    public SemaforoSimulado getVacios() {
+        return vacios;
     }
 
     public static class ResultadoConsumo {
