@@ -11,7 +11,6 @@ public class SemaforoSimulado {
     private final String nombre;
     private final Cola<Proceso> colaEspera;
     private final Cola<Proceso> permisosTransferidos;
-
     private int valor;
 
     public SemaforoSimulado(String nombre, int valorInicial) {
@@ -33,40 +32,34 @@ public class SemaforoSimulado {
     }
 
     public synchronized boolean semWait(
-            Proceso proceso, MotivoBloqueo motivo) {
+            Proceso proceso,
+            MotivoBloqueo motivo) {
 
-        if (proceso == null) {
-            throw new IllegalArgumentException(
-                    "Proceso invalido");
-        }
-
-        if (motivo == null
+        if (proceso == null || motivo == null
                 || motivo == MotivoBloqueo.NINGUNO) {
             throw new IllegalArgumentException(
-                    "Motivo invalido");
+                    "Argumentos invalidos");
         }
 
         if (proceso.getPcb().getEstado()
                 != EstadoProceso.EJECUCION) {
             throw new IllegalStateException(
-                    "El proceso debe estar EJECUCION");
+                    "El proceso debe estar en ejecucion");
         }
 
-        // Si recibio un permiso por transferencia,
-        // puede continuar sin descontarlo otra vez.
         if (consumirPermisoTransferido(proceso)) {
             return true;
         }
 
-        // Adquirir un permiso disponible.
         if (valor > 0) {
             valor--;
             return true;
         }
 
-        // Bloquear el proceso simulado.
-        proceso.getPcb().bloquear(motivo);
-        colaEspera.encolar(proceso);
+        if (!estaEsperando(proceso)) {
+            proceso.getPcb().bloquear(motivo);
+            colaEspera.encolar(proceso);
+        }
 
         return false;
     }
@@ -86,10 +79,7 @@ public class SemaforoSimulado {
                 continue;
             }
 
-            // Reservar el permiso para este proceso.
             permisosTransferidos.encolar(proceso);
-
-            // El nucleo debera moverlo a LISTO.
             return proceso;
         }
 
@@ -97,32 +87,110 @@ public class SemaforoSimulado {
         return null;
     }
 
-    private boolean consumirPermisoTransferido(
-            Proceso procesoBuscado) {
+    public synchronized void cancelarEspera(
+            Proceso proceso) {
 
-        int cantidad = permisosTransferidos.getTamanio();
+        if (proceso == null) {
+            return;
+        }
+
+        int esperando = colaEspera.getTamanio();
+
+        for (int i = 0; i < esperando; i++) {
+
+            Proceso actual = colaEspera.desencolar();
+
+            if (actual != proceso) {
+                colaEspera.encolar(actual);
+            }
+        }
+
+        int transferidos =
+                permisosTransferidos.getTamanio();
+
+        int recuperados = 0;
+
+        for (int i = 0; i < transferidos; i++) {
+
+            Proceso actual =
+                    permisosTransferidos.desencolar();
+
+            if (actual == proceso) {
+                recuperados++;
+            } else {
+                permisosTransferidos.encolar(actual);
+            }
+        }
+
+        for (int i = 0; i < recuperados; i++) {
+            semSignal();
+        }
+    }
+
+    private boolean estaEsperando(Proceso buscado) {
+
+        int cantidad = colaEspera.getTamanio();
         boolean encontrado = false;
 
         for (int i = 0; i < cantidad; i++) {
 
-            Proceso proceso =
+            Proceso actual = colaEspera.desencolar();
+
+            if (actual == buscado) {
+                encontrado = true;
+            }
+
+            colaEspera.encolar(actual);
+        }
+
+        return encontrado;
+    }
+
+    private boolean consumirPermisoTransferido(
+            Proceso buscado) {
+
+        int cantidad =
+                permisosTransferidos.getTamanio();
+
+        boolean encontrado = false;
+
+        for (int i = 0; i < cantidad; i++) {
+
+            Proceso actual =
                     permisosTransferidos.desencolar();
 
-            if (proceso.estaTerminado()) {
-
-                // Liberar el permiso reservado que
-                // ya no podra utilizar.
-                valor++;
-
-            } else if (proceso == procesoBuscado
-                    && !encontrado) {
-
+            if (actual == buscado && !encontrado) {
                 encontrado = true;
 
-            } else {
+            } else if (actual.estaTerminado()) {
+                semSignal();
 
-                permisosTransferidos.encolar(proceso);
+            } else {
+                permisosTransferidos.encolar(actual);
             }
+        }
+
+        return encontrado;
+    }
+
+    public synchronized boolean tienePermisoTransferido(
+            Proceso buscado) {
+
+        int cantidad =
+                permisosTransferidos.getTamanio();
+
+        boolean encontrado = false;
+
+        for (int i = 0; i < cantidad; i++) {
+
+            Proceso actual =
+                    permisosTransferidos.desencolar();
+
+            if (actual == buscado) {
+                encontrado = true;
+            }
+
+            permisosTransferidos.encolar(actual);
         }
 
         return encontrado;
@@ -143,25 +211,4 @@ public class SemaforoSimulado {
     public String getNombre() {
         return nombre;
     }
-
-public synchronized boolean tienePermisoTransferido(
-        Proceso buscado) {
-
-    int cantidad = permisosTransferidos.getTamanio();
-    boolean encontrado = false;
-
-    for (int i = 0; i < cantidad; i++) {
-
-        Proceso proceso = permisosTransferidos.desencolar();
-
-        if (proceso == buscado && !proceso.estaTerminado()) {
-            encontrado = true;
-        }
-
-        permisosTransferidos.encolar(proceso);
-    }
-
-    return encontrado;
-}
-
 }

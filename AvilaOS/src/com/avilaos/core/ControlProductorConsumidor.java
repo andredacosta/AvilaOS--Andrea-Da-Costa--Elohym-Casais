@@ -28,40 +28,29 @@ public class ControlProductorConsumidor {
         this.consumidos = 0;
     }
 
-    // Ejecuta una fase del protocolo productor-consumidor.
-    // Una operacion completa requiere varios ciclos.
     public synchronized boolean ejecutarOperacion(
             Proceso proceso) {
 
         if (proceso == null
                 || proceso.getPcb().getEstado()
                 != EstadoProceso.EJECUCION) {
-
             throw new IllegalArgumentException(
                     "Proceso no disponible");
         }
 
         TipoProceso tipo = proceso.getPcb().getTipo();
 
-        if (tipo != TipoProceso.PRODUCTOR
-                && tipo != TipoProceso.CONSUMIDOR) {
-
-            throw new IllegalArgumentException(
-                    "El proceso no es productor ni consumidor");
-        }
+        validarTipo(tipo);
 
         FaseOperacionBuffer fase =
                 proceso.getPcb().getFaseOperacionBuffer();
 
         switch (fase) {
 
-            // Solicitar espacio vacio o elemento disponible.
             case ESPERANDO_PERMISO -> {
 
                 SemaforoSimulado semaforo =
-                        tipo == TipoProceso.PRODUCTOR
-                        ? buffer.getVacios()
-                        : buffer.getLlenos();
+                        semaforoDeEntrada(tipo);
 
                 MotivoBloqueo motivo =
                         tipo == TipoProceso.PRODUCTOR
@@ -78,13 +67,10 @@ public class ControlProductorConsumidor {
                 return true;
             }
 
-            // Solicitar acceso exclusivo al buffer.
             case ESPERANDO_MUTEX -> {
 
                 if (!buffer.getMutex().semWait(
-                        proceso,
-                        MotivoBloqueo.MUTEX_OCUPADO)) {
-
+                        proceso, MotivoBloqueo.MUTEX_OCUPADO)) {
                     return false;
                 }
 
@@ -94,7 +80,6 @@ public class ControlProductorConsumidor {
                 return true;
             }
 
-            // Insertar o extraer un elemento.
             case OPERANDO_BUFFER -> {
 
                 if (tipo == TipoProceso.PRODUCTOR) {
@@ -105,12 +90,9 @@ public class ControlProductorConsumidor {
                             + proceso.getPcb()
                                     .getProgramCounter();
 
-                    boolean exito =
-                            buffer.intentarProducir(elemento);
-
-                    if (!exito) {
+                    if (!buffer.intentarProducir(elemento)) {
                         throw new IllegalStateException(
-                                "Permiso de espacio inconsistente");
+                                "Inconsistencia al producir");
                     }
 
                     producidos++;
@@ -122,7 +104,7 @@ public class ControlProductorConsumidor {
 
                     if (!resultado.isExitoso()) {
                         throw new IllegalStateException(
-                                "Permiso de elemento inconsistente");
+                                "Inconsistencia al consumir");
                     }
 
                     consumidos++;
@@ -134,7 +116,6 @@ public class ControlProductorConsumidor {
                 return true;
             }
 
-            // Liberar la region critica.
             case LIBERANDO_MUTEX -> {
 
                 buffer.getMutex().semSignal();
@@ -145,16 +126,10 @@ public class ControlProductorConsumidor {
                 return true;
             }
 
-            // Notificar elementos o espacios disponibles.
             case NOTIFICANDO_BUFFER -> {
 
-                if (tipo == TipoProceso.PRODUCTOR) {
-                    buffer.getLlenos().semSignal();
-                } else {
-                    buffer.getVacios().semSignal();
-                }
+                semaforoDeSalida(tipo).semSignal();
 
-                // Preparar la siguiente operacion.
                 proceso.getPcb().completarOperacionBuffer();
                 proceso.getPcb().reiniciarFaseOperacionBuffer();
 
@@ -170,8 +145,100 @@ public class ControlProductorConsumidor {
             }
 
             default -> throw new IllegalStateException(
-                    "Fase de operacion desconocida");
+                    "Fase desconocida");
         }
+    }
+
+    public synchronized void cancelarOperacion(
+            Proceso proceso) {
+
+        if (proceso == null) {
+            return;
+        }
+
+        TipoProceso tipo = proceso.getPcb().getTipo();
+
+        if (tipo != TipoProceso.PRODUCTOR
+                && tipo != TipoProceso.CONSUMIDOR) {
+            return;
+        }
+
+        FaseOperacionBuffer fase =
+                proceso.getPcb().getFaseOperacionBuffer();
+
+        SemaforoSimulado entrada =
+                semaforoDeEntrada(tipo);
+
+        SemaforoSimulado salida =
+                semaforoDeSalida(tipo);
+
+        // Retirar al proceso de todas las esperas.
+        // Un permiso transferido se reasigna o recupera.
+        entrada.cancelarEspera(proceso);
+        buffer.getMutex().cancelarEspera(proceso);
+
+        switch (fase) {
+
+            case ESPERANDO_PERMISO -> {
+                // No posee permisos adquiridos.
+            }
+
+            case ESPERANDO_MUTEX -> {
+                // Habia adquirido el permiso de entrada.
+                entrada.semSignal();
+            }
+
+            case OPERANDO_BUFFER -> {
+                // Tenia el permiso de entrada y el mutex.
+                buffer.getMutex().semSignal();
+                entrada.semSignal();
+            }
+
+            case LIBERANDO_MUTEX -> {
+                // Ya modifico el buffer:
+                // liberar mutex y notificar el resultado.
+                buffer.getMutex().semSignal();
+                salida.semSignal();
+            }
+
+            case NOTIFICANDO_BUFFER -> {
+                // El mutex ya fue liberado.
+                // Falta notificar la modificacion.
+                salida.semSignal();
+            }
+
+            case COMPLETADA -> {
+                // No hay recursos pendientes.
+            }
+        }
+
+        proceso.getPcb().completarOperacionBuffer();
+        proceso.getPcb().reiniciarFaseOperacionBuffer();
+    }
+
+    private void validarTipo(TipoProceso tipo) {
+
+        if (tipo != TipoProceso.PRODUCTOR
+                && tipo != TipoProceso.CONSUMIDOR) {
+            throw new IllegalArgumentException(
+                    "Tipo de proceso invalido");
+        }
+    }
+
+    private SemaforoSimulado semaforoDeEntrada(
+            TipoProceso tipo) {
+
+        return tipo == TipoProceso.PRODUCTOR
+                ? buffer.getVacios()
+                : buffer.getLlenos();
+    }
+
+    private SemaforoSimulado semaforoDeSalida(
+            TipoProceso tipo) {
+
+        return tipo == TipoProceso.PRODUCTOR
+                ? buffer.getLlenos()
+                : buffer.getVacios();
     }
 
     public synchronized int getProducidos() {
